@@ -1,7 +1,8 @@
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from typing import Optional
+from app.api.schemas import WeatherQuery, WeatherResponse
 from app.providers.openweather import fetch_weather
 
 app = FastAPI(title="Weather API", version="0.1.0")
@@ -22,19 +23,19 @@ async def healthz():
     return {"status": "ok"}
 
 @app.get("/api/v1/weather")
-async def get_weather(
-    city: Optional[str] = Query(default=None, description="Название города"),
-    lat: Optional[float] = Query(default=None, description="Широта"),
-    lon: Optional[float] = Query(default=None, description="Долгота"),
-):
+async def get_weather(q: WeatherQuery = Depends()):
     """
-    MVP-эндпоинт:
-    - Если есть lat+lon — используем их.
-    - Иначе, если есть city — используем город.
-    - Иначе 400.
+    - 422: неверные типы/диапазоны.
+    - 400: логическая ошибка запроса (не переданы ни city, ни обе координаты).
+    - 502: проблемы провайдера.
+    Приоритет: если есть координаты — используем их; иначе — город.
     """
-    if lat is not None and lon is not None:
-        return await fetch_weather(lat=lat, lon=lon)
-    if city:
-        return await fetch_weather(city=city)
-    raise HTTPException(status_code=400, detail="Provide city or (lat, lon)")
+    if q.is_empty():
+        raise HTTPException(status_code=400, detail="Provide city or (lat, lon)")
+
+    if q.lat is not None and q.lon is not None:
+        data = await fetch_weather(lat=q.lat, lon=q.lon)
+    else:
+        data = await fetch_weather(city=q.city)
+
+    return WeatherResponse(**data)

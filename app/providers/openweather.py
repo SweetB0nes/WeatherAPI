@@ -1,5 +1,6 @@
 import httpx
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 from app.core.config import settings
 
 async def fetch_weather(
@@ -36,10 +37,15 @@ async def fetch_weather(
     conditions = data["weather"][0]["description"]
     city_name = data.get("name")
 
+    observed_iso = None
+    dt_unix = data.get("dt")
+    if isinstance(dt_unix, (int, float)):
+        observed_iso = datetime.fromtimestamp(dt_unix, tz=timezone.utc).isoformat()
+
     return {
         "location": {"city": city_name, "lat": lat_val, "lon": lon_val},
         "temperature": {"value": round(temp_c, 1), "unit": "C"},
         "conditions": conditions,
         "provider": "openweather",
-        
+        "observed_at_utc": observed_iso,
     }
