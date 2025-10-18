@@ -20,10 +20,10 @@ async def httpx_status_error_handler(_, exc: httpx.HTTPStatusError):
     code = exc.response.status_code if exc.response is not None else "unknown"
     return JSONResponse({"detail": f"Upstream HTTP {code}"}, status_code=502)
 
-@app.get("healt")
+@app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
-
+    
 @app.get("/api/v1/weather")
 async def get_weather(q: WeatherQuery = Depends()):
     """
