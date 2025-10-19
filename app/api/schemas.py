@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Any, Dict, Optional, List
 from pydantic import BaseModel, Field
 
 class WeatherQuery(BaseModel):
@@ -33,3 +33,14 @@ class WeatherResponse(BaseModel):
     observed_at_utc: Optional[str] = Field(
         default=None, description="Время наблюдения"
     )
+
+class AgentQueryRequest(BaseModel):
+    query: str
+
+class AgentQueryResponse(BaseModel):
+    id: int
+    status: str
+    answer: str
+    error: str | None = None
+
+

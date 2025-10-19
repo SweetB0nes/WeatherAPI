@@ -9,3 +9,5 @@ psycopg2-binary
 langchain
 langchain-community
 python-dotenv
+langchain_openai
+orjson

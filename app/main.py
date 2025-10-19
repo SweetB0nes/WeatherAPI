@@ -1,25 +1,36 @@
 import httpx
-from fastapi import FastAPI, HTTPException, Depends
-from fastapi.responses import JSONResponse
 
-from app.api.schemas import WeatherQuery, WeatherResponse
-from app.providers.openweather import fetch_weather
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.responses import ORJSONResponse
+
+from app.api.schemas import WeatherQuery, WeatherResponse, AgentQueryRequest, AgentQueryResponse
+from app.providers.openweather import fetch_weather  
 from app.infrastructure.repositories.weather_request_repo import WeatherRequestRepository
+from app.infrastructure.repositories.agent_request_repo import AgentRequestRepository
 
-app = FastAPI(title="Weather API", version="0.3.0")
-repo = WeatherRequestRepository()
+from app.agents.lc_agent import build_agent, run_with_result
 
-@app.exception_handler(httpx.RequestError)
-async def httpx_request_error_handler(_, exc: httpx.RequestError):
-    # Сетевые проблемы/таймауты до получения ответа
-    return JSONResponse({"detail": "Upstream network error"}, status_code=502)
+weather_repo = WeatherRequestRepository()
+agent_repo = AgentRequestRepository()
 
-@app.exception_handler(httpx.HTTPStatusError)
-async def httpx_status_error_handler(_, exc: httpx.HTTPStatusError):
-    # Провайдер вернул 4xx/5xx
-    code = exc.response.status_code if exc.response is not None else "unknown"
-    return JSONResponse({"detail": f"Upstream HTTP {code}"}, status_code=502)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.agent_bundle = build_agent()
+    yield
+
+
+app = FastAPI(
+    title="Weather API",
+    version="0.4.0",
+    lifespan=lifespan,
+    default_response_class=ORJSONResponse,  
+)
+
+# ------------------------------
+# 1) Старый REST-эндпоинт погоды
+# ------------------------------
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok"}
@@ -33,7 +44,7 @@ async def get_weather(q: WeatherQuery = Depends()):
     Приоритет: если есть координаты — используем их; иначе — город.
     """
     if q.is_empty():
-        repo.save_validation_error(
+        weather_repo.save_validation_error(
             city=q.city, lat=q.lat, lon=q.lon,
             error_detail="Provide city or (lat, lon)",
         )
@@ -48,7 +59,7 @@ async def get_weather(q: WeatherQuery = Depends()):
             city = q.city
 
         # Успешный ответ -> пишем success
-        repo.save_success(
+        weather_repo.save_success(
             city=city,
             lat=data["location"]["lat"],
             lon=data["location"]["lon"],
@@ -61,7 +72,7 @@ async def get_weather(q: WeatherQuery = Depends()):
 
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         # Ошибка провайдера -> запись + 502
-        repo.save_provider_error(
+        weather_repo.save_provider_error(
             city=q.city,
             lat=q.lat,
             lon=q.lon,
@@ -69,3 +80,23 @@ async def get_weather(q: WeatherQuery = Depends()):
             error_detail=str(e),
         )
         raise HTTPException(status_code=502, detail="Upstream provider error") from e
+
+
+# -----------------------------------------
+# 2) Новый эндпоинт: агент + лог в БД (текст)
+# -----------------------------------------
+@app.post("/api/v1/agent-query", response_model=AgentQueryResponse, summary="Ask GPT (agent) about weather")
+async def agent_query(req: AgentQueryRequest, request: Request):
+    try:
+        bundle = request.app.state.agent_bundle
+        result = run_with_result(bundle, req.query) # {"final_text": "..."}
+        answer_text = result.get("final_text") or ""
+
+
+        row_id = agent_repo.save_success(query_text=req.query, response={"final_text": answer_text})
+
+        return AgentQueryResponse(id=row_id, status="success", answer=answer_text)
+    except Exception as e:
+        if hasattr(agent_repo, "save_error"):
+            agent_repo.save_error(query_text=req.query, error_detail=str(e))
+        return AgentQueryResponse(id=0, status="error", answer="", error=str(e))
