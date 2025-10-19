@@ -18,3 +18,13 @@ class WeatherRequestRow(Base):
     status = Column(String, nullable=False)                  # 'success' | 'provider_error' | 'validation_error'
 
     result_raw = Column(JSON, nullable=True)                 # часть ответа или ошибка
+
+class AgentRequestRow(Base):
+    __tablename__ = "agent_requests"
+
+    id = Column(Integer, primary_key=True)
+    requested_at_utc = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    query_text = Column(String, nullable=False)
+    agent_response = Column(JSON, nullable=True)   # ответ агента (структурный)
+    status = Column(String, nullable=False)         # 'success' | 'error'
+    error_detail = Column(String, nullable=True)

@@ -1,5 +1,6 @@
 from logging.config import fileConfig
 import os  
+from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -15,6 +16,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
 
 def run_migrations_offline() -> None:
     # подставляем URL из ENV, если он есть
@@ -39,6 +44,8 @@ def run_migrations_online() -> None:
     )
     # важно установить опцию в конфиг перед engine_from_config
     config.set_main_option("sqlalchemy.url", db_url)
+
+    print("ALEMBIC sqlalchemy.url =", config.get_main_option("sqlalchemy.url"))
 
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
