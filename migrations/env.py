@@ -1,5 +1,6 @@
 from logging.config import fileConfig
 import os  
+from dotenv import load_dotenv
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -15,6 +16,10 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
 
 def run_migrations_offline() -> None:
     # подставляем URL из ENV, если он есть
