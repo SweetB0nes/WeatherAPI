@@ -10,6 +10,8 @@ from app.infrastructure.repositories.weather_request_repo import WeatherRequestR
 from app.infrastructure.repositories.agent_request_repo import AgentRequestRepository
 
 from app.agents.lc_agent import build_agent, run_with_result
+from app.agents.lc_agent_gigachat import build_agent as build_gigachat_agent
+from app.agents.lc_agent_gigachat import run_with_result as run_gigachat
 
 weather_repo = WeatherRequestRepository()
 agent_repo = AgentRequestRepository()
@@ -18,8 +20,13 @@ agent_repo = AgentRequestRepository()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.agent_bundle = build_agent()
-    yield
 
+    try:
+        app.state.gigachat_bundle = build_gigachat_agent()
+    except Exception:
+        app.state.gigachat_bundle = None
+
+    yield
 
 app = FastAPI(
     title="Weather API",
@@ -92,10 +99,27 @@ async def agent_query(req: AgentQueryRequest, request: Request):
         result = await run_with_result(bundle, req.query) # {"final_text": "..."}
         answer_text = result.get("final_text") or ""
 
+        row_id = agent_repo.save_success(query_text=req.query, response={"final_text": answer_text})
+        return AgentQueryResponse(id=row_id, status="success", answer=answer_text)
+
+    except Exception as e:
+        if hasattr(agent_repo, "save_error"):
+            agent_repo.save_error(query_text=req.query, error_detail=str(e))
+        return AgentQueryResponse(id=0, status="error", answer="", error=str(e))
+
+@app.post("/api/v1/agent-query-gigachat", response_model=AgentQueryResponse, summary="Ask GigaChat (agent) about weather")
+async def agent_query_gigachat(req: AgentQueryRequest, request: Request):
+    try:
+        bundle = getattr(request.app.state, "gigachat_bundle", None)
+        if bundle is None:
+            raise HTTPException(status_code=503, detail="GigaChat agent is not configured")
+
+        result = await run_gigachat(bundle, req.query)
+        answer_text = result.get("final_text") or ""
 
         row_id = agent_repo.save_success(query_text=req.query, response={"final_text": answer_text})
-
         return AgentQueryResponse(id=row_id, status="success", answer=answer_text)
+
     except Exception as e:
         if hasattr(agent_repo, "save_error"):
             agent_repo.save_error(query_text=req.query, error_detail=str(e))

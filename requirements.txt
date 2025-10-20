@@ -11,3 +11,4 @@ langchain-community
 python-dotenv
 langchain_openai
 orjson
+langchain-gigachat
