@@ -9,48 +9,14 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 from langchain_core.tools import tool
 
 from app.core.config import settings
-
-
-def _fetch_weather(city: Optional[str] = None,
-                   lat: Optional[float] = None,
-                   lon: Optional[float] = None) -> Dict[str, Any]:
-    """Синхронный вызов OpenWeather на httpx"""
-    if (lat is not None and lon is not None):
-        params = {"lat": lat, "lon": lon}
-    elif city:
-        params = {"q": city}
-    else:
-        raise ValueError("Provide city or (lat, lon)")
-
-    params.update({
-        "appid": settings.openweather_api_key,
-        "units": "metric",
-    })
-
-    with httpx.Client(timeout=settings.http_timeout) as client:
-        r = client.get(settings.openweather_base_url, params=params)
-        r.raise_for_status()
-        data = r.json()
-
-    return {
-        "location": {
-            "city": data.get("name"),
-            "lat": float(data["coord"]["lat"]),
-            "lon": float(data["coord"]["lon"]),
-        },
-        "temperature": {"value": round(float(data["main"]["temp"]), 1), "unit": "C"},
-        "conditions": data["weather"][0]["description"],
-        "provider": "openweather",
-        "observed_at_utc": data.get("dt"),
-    }
-
+from app.providers.openweather import fetch_weather
 
 @tool 
-def get_weather(city: Optional[str] = None,
+async def get_weather(city: Optional[str] = None,
                 lat: Optional[float] = None,
                 lon: Optional[float] = None) -> Dict[str, Any]:
     """Get current weather by city (city) OR by coordinates (lat, lon). Returns JSON."""
-    return _fetch_weather(city=city, lat=lat, lon=lon)
+    return await fetch_weather(city=city, lat=lat, lon=lon)
 
 
 def build_agent() -> dict:
@@ -73,7 +39,7 @@ def build_agent() -> dict:
     return {"llm": llm_with_tools, "tools": {"get_weather": get_weather}}
 
 
-def run_with_result(agent_bundle: dict, user_input: str) -> Dict[str, Any]:
+async def run_with_result(agent_bundle: dict, user_input: str) -> Dict[str, Any]:
     """
     Один «цикл» tool calling:
       1) user -> llm
@@ -83,8 +49,8 @@ def run_with_result(agent_bundle: dict, user_input: str) -> Dict[str, Any]:
     llm = agent_bundle["llm"]
     tools = agent_bundle["tools"]
 
-    messages = [HumanMessage(user_input)]
-    ai: AIMessage = llm.invoke(messages)
+    messages = [HumanMessage(content=user_input)]
+    ai: AIMessage = await llm.ainvoke(messages)
 
     steps = []
     final_text: str
@@ -93,7 +59,7 @@ def run_with_result(agent_bundle: dict, user_input: str) -> Dict[str, Any]:
         for call in ai.tool_calls:
             name = call["name"]
             args = call.get("args", {})
-            result = tools[name].invoke(args)
+            result = await tools[name].ainvoke(args)
             steps.append({"tool": name, "tool_input": args, "observation": result})
             messages.append(ai)
             messages.append(
@@ -102,8 +68,8 @@ def run_with_result(agent_bundle: dict, user_input: str) -> Dict[str, Any]:
                     tool_call_id=call["id"],
                 )
             )
-        # Финальный ответ 
-        ai_final: AIMessage = llm.invoke(messages)
+        # Финальный ответ
+        ai_final: AIMessage = await llm.ainvoke(messages)
         final_text = ai_final.content or ""
     else:
         final_text = ai.content or ""

@@ -89,7 +89,7 @@ async def get_weather(q: WeatherQuery = Depends()):
 async def agent_query(req: AgentQueryRequest, request: Request):
     try:
         bundle = request.app.state.agent_bundle
-        result = run_with_result(bundle, req.query) # {"final_text": "..."}
+        result = await run_with_result(bundle, req.query) # {"final_text": "..."}
         answer_text = result.get("final_text") or ""
 
 
