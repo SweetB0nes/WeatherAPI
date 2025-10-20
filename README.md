@@ -54,6 +54,13 @@
    
         OPENAI_BASE_URL=https://api.proxyapi.ru/openai/v1
 
+   GigaChat
+
+        GIGACHAT_CREDENTIALS=<ваш_ключ_из_GigaChat-API>
+        GIGACHAT_SCOPE=GIGACHAT_API_PERS
+        GIGACHAT_VERIFY_SSL=false
+        GIGACHAT_MODEL=GigaChat-Pro
+
 3. Поднимите окружение:
 
        docker compose up --build
@@ -77,3 +84,13 @@
           -H "Content-Type: application/json" ^
           -d "{\"query\":\"Погода для широты 43.60 и долготы 39.73\"}"
        {"id":2,"status":"success","answer":"В Сочи (широта 43.60, долгота 39.73) сейчас температура составляет 16.1°C, и наблюдаются сильные дожди.","error":null}
+
+       curl -X POST "http://localhost:8000/api/v1/agent-query-gigachat" ^
+          -H "Content-Type: application/json" ^
+          -d "{\"query\":\"Какая погода в Москве сейчас?\"}"
+       {"id":3,"status":"success","answer":"Сейчас в Москве облачно, температура воздуха около 5°C.","error":null}
+   
+       curl -X POST "http://localhost:8000/api/v1/agent-query-gigachat" ^
+          -H "Content-Type: application/json" ^
+          -d "{\"query\":\"Погода для широты 43.60 и долготы 39.73\"}"
+       {"id":2,"status":"success","answer":"На указанных координатах сейчас облачно, температура воздуха +14°C. Город — Сочи.","error":null}
